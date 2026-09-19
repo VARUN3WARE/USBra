@@ -6,3 +6,6 @@ pub mod server;
 pub mod source;
 pub mod stats;
 pub mod testsource;
+
+#[cfg(feature = "gnome")]
+pub mod gnome;

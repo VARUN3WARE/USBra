@@ -61,11 +61,17 @@ Steps: (a) D-Bus probe tool printing API version + created monitor; (b) raw
 PipeWire consumer dumping frames to PPM for eyeball check; (c) wire into
 server; (d) drag-a-window test.
 
-**M6a (this commit):** `scripts/m6-probe-virtual-monitor.py` creates a real
+**M6a (landed):** `scripts/m6-probe-virtual-monitor.py` creates a real
 virtual Display 2 on a GNOME Wayland session (optional GStreamer consumer to
 negotiate WxH), holds it, then tears it down. Host also exposes a
 `FrameSource` trait so `GnomeScreenCast` can plug into the existing TCP
 pipeline without rewriting the server.
+
+**M6b (this commit, D-Bus half):** `cargo run --features gnome -- --probe-gnome`
+uses zbus to drive `CreateSession` → `RecordVirtual(is-platform)` →
+`PipeWireStreamAdded` → `Start`/`Stop` from Rust, optionally attaching
+`gst-launch` for size negotiation. Full PipeWire/`SPA_META_VideoDamage`
+consumer still needs `libpipewire-0.3-dev` (next).
 Acceptance (the brief's MVP list): phone connects over USB; Ubuntu shows
 Display 2; Android renders it; a window dragged from Monitor 1 lands on the
 phone; Monitor 1 unaffected; USB unplug removes Display 2 within ~1 s; replug

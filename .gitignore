@@ -20,3 +20,7 @@ android/.kotlin/
 # Benchmarks scratch
 benchmarks/results/*.jsonl
 /tmp/
+
+# Python
+__pycache__/
+*.py[cod]

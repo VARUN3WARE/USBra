@@ -6,8 +6,18 @@ rust-version.workspace = true
 license.workspace = true
 description = "USBra host: virtual-display frame sources, protocol server, stats"
 
+[features]
+default = []
+# M6: mutter ScreenCast D-Bus (RecordVirtual). PipeWire consumer needs
+# libpipewire-0.3-dev and lands as a follow-up behind the same feature.
+gnome = ["dep:zbus", "dep:pollster", "dep:async-io", "dep:futures-lite"]
+
 [dependencies]
 usbra-protocol = { path = "../protocol" }
+zbus = { version = "5", optional = true }
+pollster = { version = "0.4", optional = true }
+async-io = { version = "2", optional = true }
+futures-lite = { version = "2", optional = true }
 
 [[bin]]
 name = "usbra-host"

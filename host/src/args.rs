@@ -6,6 +6,8 @@ pub enum Mode {
     Serve,
     /// Run the frame-production benchmark; no network.
     SelfTest,
+    /// Create a mutter RecordVirtual Display 2, hold, tear down (needs `--features gnome`).
+    ProbeGnome,
 }
 
 #[derive(Debug, Clone)]
@@ -21,6 +23,10 @@ pub struct Args {
     pub stats: Option<String>,
     pub frame_ack: bool,
     pub frames: u32,
+    /// Seconds to keep the probe virtual monitor alive (default 20).
+    pub hold_secs: u64,
+    /// Skip gst-launch PipeWire consumer during `--probe-gnome`.
+    pub no_gst: bool,
 }
 
 pub const USAGE: &str = "\
@@ -29,7 +35,7 @@ usbra-host — USBra host (a real second display for Linux, over USB)
 USAGE: usbra-host [OPTIONS]
 
   --source <name>        frame source: test (animated damage pattern).
-                         'gnome' (mutter RecordVirtual) and 'evdi' land in M6.
+                         'gnome' (mutter RecordVirtual) lands with --features gnome (M6).
   --bind <addr>          listen address (default 127.0.0.1 — loopback only)
   --port <n>             TCP port (default 8899; 0 = ephemeral)
   --width <n>            virtual display width in px (default 1600)
@@ -40,10 +46,17 @@ USAGE: usbra-host [OPTIONS]
   --frame-ack            ask client for FRAME_ACK (latency instrumentation)
   --selftest             benchmark frame production; no network, no phone
   --frames <n>           selftest frame count (default 600)
+  --probe-gnome          M6a/b: create a real GNOME virtual Display 2, hold, stop
+                         (requires: cargo build --features gnome; GNOME Wayland)
+  --hold <s>             probe hold time in seconds (default 20)
+  --no-gst               probe: skip gst-launch PipeWire consumer
   -h, --help             this help
 
 Typical demo run (with scripts/adb-usb-setup.sh active):
   usbra-host --source test --stats /tmp/usbra.jsonl --frame-ack
+
+GNOME Display 2 probe (M6):
+  cargo run --features gnome -- --probe-gnome --width 1080 --height 1920 --hold 30
 ";
 
 pub fn parse(argv: &[String]) -> Result<Args, String> {
@@ -59,6 +72,8 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
         stats: None,
         frame_ack: false,
         frames: 600,
+        hold_secs: 20,
+        no_gst: false,
     };
     let mut i = 0usize;
     while i < argv.len() {
@@ -70,7 +85,9 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
         match arg {
             "-h" | "--help" => return Err(String::new()),
             "--selftest" => a.mode = Mode::SelfTest,
+            "--probe-gnome" => a.mode = Mode::ProbeGnome,
             "--frame-ack" => a.frame_ack = true,
+            "--no-gst" => a.no_gst = true,
             "--source" => a.source = val(&mut i, arg)?,
             "--bind" => a.bind = val(&mut i, arg)?,
             "--port" => a.port = parse_num(&val(&mut i, arg)?, arg)?,
@@ -80,14 +97,15 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
             "--full-frame-every" => a.full_every_secs = parse_num(&val(&mut i, arg)?, arg)?,
             "--stats" => a.stats = Some(val(&mut i, arg)?),
             "--frames" => a.frames = parse_num(&val(&mut i, arg)?, arg)?,
+            "--hold" => a.hold_secs = parse_num(&val(&mut i, arg)?, arg)?,
             other => return Err(format!("unknown argument: {other}")),
         }
         i += 1;
     }
     if a.source != "test" {
         return Err(format!(
-            "source '{}' is not available yet — the gnome/evdi backends land in M6; \
-             use --source test",
+            "source '{}' is not available yet — use --source test \
+             (or --probe-gnome to exercise the mutter D-Bus path)",
             a.source
         ));
     }

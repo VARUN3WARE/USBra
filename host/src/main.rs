@@ -35,6 +35,20 @@ fn main() -> ExitCode {
             selftest::run(&a);
             ExitCode::SUCCESS
         }
+        Mode::ProbeGnome => {
+            #[cfg(feature = "gnome")]
+            {
+                ExitCode::from(usbra_host::gnome::probe::run(&a) as u8)
+            }
+            #[cfg(not(feature = "gnome"))]
+            {
+                eprintln!(
+                    "error: --probe-gnome requires building with the gnome feature:\n  \
+                     cargo run --features gnome -- --probe-gnome"
+                );
+                ExitCode::from(2)
+            }
+        }
         Mode::Serve => {
             let cfg = server::ServeConfig {
                 bind: a.bind.clone(),
