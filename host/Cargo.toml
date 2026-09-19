@@ -1,0 +1,14 @@
+[package]
+name = "usbra-host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "USBra host: virtual-display frame sources, protocol server, stats"
+
+[dependencies]
+usbra-protocol = { path = "../protocol" }
+
+[[bin]]
+name = "usbra-host"
+path = "src/main.rs"

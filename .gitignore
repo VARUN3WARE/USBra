@@ -1,0 +1,22 @@
+# Rust
+/target/
+Cargo.lock.bak
+
+# Android / Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/*.iml
+android/.cxx/
+android/captures/
+android/.kotlin/
+
+# OS / editor
+.DS_Store
+*.swp
+
+# Benchmarks scratch
+benchmarks/results/*.jsonl
+/tmp/

@@ -1,0 +1,11 @@
+[package]
+name = "usbra-protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "USBra wire protocol v1 — binary, little-endian, damage-aware frame transport"
+publish = false
+
+[dependencies]
+# Intentionally empty: std-only, builds offline, no supply chain for the core.
