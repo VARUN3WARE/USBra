@@ -35,4 +35,7 @@ echo "== session context =="
 echo "  XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-unknown}   (USBra M6 targets: wayland)"
 echo "  mutter/gnome-shell version: $(gnome-shell --version 2>/dev/null || echo '?')"
 echo
-echo "Tip: run this again while a USBra session is active — one more connector = Display 2."
+echo "Tip: create a real virtual Display 2 now with:"
+echo "  scripts/m6-probe-virtual-monitor.py --hold 30"
+echo "  (needs GNOME Wayland + python3-gi + gstreamer1.0-pipewire)"
+echo "Then re-run this script — you should see one more connector."

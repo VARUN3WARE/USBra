@@ -21,10 +21,11 @@ bundle.
 
 | Dep | Version | Why |
 |---|---|---|
-| `zbus` crate | 5.x | session-bus D-Bus client for `org.gnome.Mutter.ScreenCast` (pure Rust) |
-| `pipewire` crate (pipewire-rs) | 0.8.x | PipeWire stream consumer; links `libpipewire-0.3` |
+| `zbus` crate | 5.x | session-bus D-Bus client for `org.gnome.Mutter.ScreenCast` (pure Rust) — **M6b/c** |
+| `pipewire` crate (pipewire-rs) | 0.8.x | PipeWire stream consumer; links `libpipewire-0.3` — **M6b** |
 | `libpipewire-0.3-dev` (apt) | 0.3.x ≥ 0.3.49 | system lib for the crate |
 | GNOME | ≥ 40 (Ubuntu 21.04+; recommended 24.04+) | `RecordVirtual` API |
+| `python3-gi`, `gstreamer1.0-tools`, `gstreamer1.0-pipewire` | — | **M6a probe** (`scripts/m6-probe-virtual-monitor.py`) only; not needed by the Rust host once M6c lands |
 | `zstd` crate | 0.13.x | M7 compression (binds libzstd or bundles) |
 
 No display manager changes, no kernel modules, no root for the M6 path.

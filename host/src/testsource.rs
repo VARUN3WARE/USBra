@@ -8,6 +8,8 @@
 
 use usbra_protocol::{codec, pixel_format, Frame, Rect};
 
+use crate::source::FrameSource;
+
 const BOX_COLOR: [u8; 4] = [40, 60, 230, 255]; // BGRX → red box
 const SQ_COLOR: [u8; 4] = [200, 140, 40, 255]; // BGRX → blue square
 const BAR_COLOR: [u8; 4] = [235, 235, 235, 255]; // near-white sweep bar
@@ -79,6 +81,10 @@ impl TestSource {
             bar_x: 0,
             bar_w: 8,
         }
+    }
+
+    pub fn size(&self) -> (u16, u16) {
+        (self.w as u16, self.h as u16)
     }
 
     /// Clip an (x, y, w, h) rect in canvas coordinates; zero-area if outside.
@@ -213,6 +219,20 @@ impl TestSource {
             rects,
             payload,
         }
+    }
+}
+
+impl FrameSource for TestSource {
+    fn size(&self) -> (u16, u16) {
+        TestSource::size(self)
+    }
+
+    fn name(&self) -> &'static str {
+        "test"
+    }
+
+    fn next_frame(&mut self, timestamp_ns: u64) -> Frame {
+        TestSource::next_frame(self, timestamp_ns)
     }
 }
 

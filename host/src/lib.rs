@@ -3,5 +3,6 @@
 pub mod args;
 pub mod selftest;
 pub mod server;
+pub mod source;
 pub mod stats;
 pub mod testsource;

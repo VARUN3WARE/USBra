@@ -4,7 +4,7 @@
 //!
 //! ```text
 //! handle_conn (reader) ── PING→Pong, DISCONNECT→Bye, FRAME_ACK→stats ──┐
-//! producer thread ── paced TestSource frames ──────────────────────────┼──► writer thread ──► socket
+//! producer thread ── paced FrameSource frames ─────────────────────────┼──► writer thread ──► socket
 //!                                                    stop flag ◄──────┘
 //! ```
 
@@ -18,6 +18,7 @@ use std::time::{Duration, Instant};
 
 use usbra_protocol as proto;
 
+use crate::source::FrameSource;
 use crate::stats::Stats;
 use crate::testsource::TestSource;
 
@@ -333,7 +334,8 @@ fn handle_conn(
 }
 
 fn produce_frames(cfg: ServeConfig, tx: mpsc::Sender<OutMsg>, stop: Arc<AtomicBool>) {
-    let mut src = TestSource::new(cfg.width, cfg.height, cfg.fps, cfg.full_every_secs);
+    let mut src: Box<dyn FrameSource> =
+        Box::new(TestSource::new(cfg.width, cfg.height, cfg.fps, cfg.full_every_secs));
     let period = Duration::from_nanos(1_000_000_000 / cfg.fps.clamp(1, 240) as u64);
     let mut next = Instant::now();
     loop {
@@ -354,6 +356,7 @@ fn produce_frames(cfg: ServeConfig, tx: mpsc::Sender<OutMsg>, stop: Arc<AtomicBo
             break;
         }
     }
+    src.shutdown();
 }
 
 fn writer_loop(

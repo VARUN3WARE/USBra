@@ -50,7 +50,7 @@ Acceptance: smooth animated pattern on the phone; renderer keeps up at 60 fps
 (drain queue stays ≤ 2 deep); `dumpsys gfxinfo` shows no jank frames > 16 ms
 in steady state.
 
-## M6 — Real virtual display: mutter `RecordVirtual` backend  🔜 next
+## M6 — Real virtual display: mutter `RecordVirtual` backend  🔜 in progress
 
 What: host gains `GnomeScreenCast` source: zbus D-Bus
 (`CreateSession`/`RecordVirtual(cursor-mode=embedded, is-platform=true)`/
@@ -60,6 +60,12 @@ frames → existing pipeline. Auto teardown on USB unplug (session lifetime).
 Steps: (a) D-Bus probe tool printing API version + created monitor; (b) raw
 PipeWire consumer dumping frames to PPM for eyeball check; (c) wire into
 server; (d) drag-a-window test.
+
+**M6a (this commit):** `scripts/m6-probe-virtual-monitor.py` creates a real
+virtual Display 2 on a GNOME Wayland session (optional GStreamer consumer to
+negotiate WxH), holds it, then tears it down. Host also exposes a
+`FrameSource` trait so `GnomeScreenCast` can plug into the existing TCP
+pipeline without rewriting the server.
 Acceptance (the brief's MVP list): phone connects over USB; Ubuntu shows
 Display 2; Android renders it; a window dragged from Monitor 1 lands on the
 phone; Monitor 1 unaffected; USB unplug removes Display 2 within ~1 s; replug

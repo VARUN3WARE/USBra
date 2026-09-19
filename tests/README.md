@@ -35,3 +35,6 @@ motivates damage regions (no network, no phone).
 - M6 (later): `scripts/m1-verify-displays.sh` before/during a session shows
   the extra connector; a window can be dragged onto the phone and maximized
   there; the physical monitor keeps working.
+- M6a (probe, no phone): on a GNOME Wayland session,
+  `scripts/m6-probe-virtual-monitor.py --hold 30` should add a second display
+  in Settings → Displays for 30 s, then remove it.
