@@ -34,8 +34,8 @@ usbra-host — USBra host (a real second display for Linux, over USB)
 
 USAGE: usbra-host [OPTIONS]
 
-  --source <name>        frame source: test (animated damage pattern).
-                         'gnome' (mutter RecordVirtual) lands with --features gnome (M6).
+  --source <name>        frame source: test | gnome
+                         gnome = mutter RecordVirtual (needs --features gnome)
   --bind <addr>          listen address (default 127.0.0.1 — loopback only)
   --port <n>             TCP port (default 8899; 0 = ephemeral)
   --width <n>            virtual display width in px (default 1600)
@@ -102,12 +102,15 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
         }
         i += 1;
     }
-    if a.source != "test" {
+    if a.source != "test" && a.source != "gnome" {
         return Err(format!(
-            "source '{}' is not available yet — use --source test \
-             (or --probe-gnome to exercise the mutter D-Bus path)",
+            "source '{}' is not available — use --source test or --source gnome \
+             (gnome requires --features gnome)",
             a.source
         ));
+    }
+    if a.source == "gnome" && a.mode == Mode::Serve {
+        // Allowed; main/server will error clearly if the feature is off.
     }
     if a.width == 0 || a.height == 0 || a.width > 8192 || a.height > 8192 {
         return Err("width/height must be within 1..=8192".into());

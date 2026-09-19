@@ -29,7 +29,8 @@ native (Rust + Kotlin) · no unnecessary video encoding.
 | Host: test-pattern source, TCP server, selftest, stats (`host/`) | ✅ implemented + tested |
 | Android client: GLES renderer, reconnect (`android/`) | ✅ implemented (build on device per docs) |
 | USB transport via `adb reverse` | ✅ (scripts) |
-| **M6: GNOME virtual display backend** (mutter `RecordVirtual` + PipeWire) | 🔜 next milestone |
+| **M6: GNOME virtual display** (`--features gnome --source gnome`) | ✅ D-Bus + GStreamer grabber wired |
+| Native pipewire-rs + damage metadata | 🔜 needs `libpipewire-0.3-dev` |
 | Benchmarks on hardware | harness ready (`benchmarks/`) |
 
 See `docs/05-milestones.md` for the full roadmap and acceptance criteria.
@@ -38,13 +39,19 @@ See `docs/05-milestones.md` for the full roadmap and acceptance criteria.
 
 ```bash
 # Ubuntu (host)
-sudo apt install -y cargo adb
+sudo apt install -y cargo adb python3-gi gstreamer1.0-tools gstreamer1.0-pipewire
 cargo build --release
 ./target/release/usbra-host --selftest          # no phone needed
 
 # Phone: enable USB debugging, plug in, then:
 scripts/adb-usb-setup.sh                        # terminal 1 (USB tunnel)
-scripts/run-demo.sh                             # terminal 2 (host)
+
+# Test pattern (no virtual Display 2 yet):
+scripts/run-demo.sh                             # terminal 2
+
+# Real Display 2 on GNOME Wayland (M6):
+cargo run --release --features gnome -- \
+  --source gnome --frame-ack --stats /tmp/usbra.jsonl
 # ...and launch the USBra app on the phone (docs/10-setup-android.md)
 ```
 

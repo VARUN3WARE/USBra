@@ -67,11 +67,25 @@ negotiate WxH), holds it, then tears it down. Host also exposes a
 `FrameSource` trait so `GnomeScreenCast` can plug into the existing TCP
 pipeline without rewriting the server.
 
-**M6b (this commit, D-Bus half):** `cargo run --features gnome -- --probe-gnome`
+**M6b (landed, D-Bus half):** `cargo run --features gnome -- --probe-gnome`
 uses zbus to drive `CreateSession` → `RecordVirtual(is-platform)` →
-`PipeWireStreamAdded` → `Start`/`Stop` from Rust, optionally attaching
-`gst-launch` for size negotiation. Full PipeWire/`SPA_META_VideoDamage`
-consumer still needs `libpipewire-0.3-dev` (next).
+`PipeWireStreamAdded` → `Start`/`Stop` from Rust.
+
+**M6c (this commit):** `--source gnome` wires `GnomeSource` into the TCP
+server. On client connect the host creates Display 2, spawns
+`scripts/m6-pw-grab.py` (GStreamer `pipewiresrc` → BGRx frames), and streams
+full frames to the phone. On disconnect the grabber and ScreenCast session
+are torn down (Display 2 disappears). Damage rects / native pipewire-rs land
+when `libpipewire-0.3-dev` is available (M7 polish).
+
+```bash
+# terminal A
+scripts/adb-usb-setup.sh
+# terminal B
+cargo run -p usbra-host --features gnome -- --source gnome --frame-ack --stats /tmp/usbra.jsonl
+# phone: open USBra app
+```
+
 Acceptance (the brief's MVP list): phone connects over USB; Ubuntu shows
 Display 2; Android renders it; a window dragged from Monitor 1 lands on the
 phone; Monitor 1 unaffected; USB unplug removes Display 2 within ~1 s; replug

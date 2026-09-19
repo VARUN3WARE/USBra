@@ -36,5 +36,8 @@ motivates damage regions (no network, no phone).
   the extra connector; a window can be dragged onto the phone and maximized
   there; the physical monitor keeps working.
 - M6a (probe, no phone): on a GNOME Wayland session,
-  `scripts/m6-probe-virtual-monitor.py --hold 30` should add a second display
-  in Settings → Displays for 30 s, then remove it.
+  `scripts/m6-probe-virtual-monitor.py --hold 30` or
+  `cargo run --features gnome -- --probe-gnome --hold 30` should add a second
+  display in Settings → Displays for 30 s, then remove it.
+- M6c (gnome source): `scripts/run-gnome-demo.sh` + phone app — Settings shows
+  Display 2; a window dragged onto it appears on the phone; unplug removes it.

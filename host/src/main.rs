@@ -59,6 +59,7 @@ fn main() -> ExitCode {
                 full_every_secs: a.full_every_secs,
                 stats_path: a.stats.clone(),
                 frame_ack: a.frame_ack,
+                source: a.source.clone(),
             };
             match server::serve(&cfg) {
                 Ok(()) => ExitCode::SUCCESS,

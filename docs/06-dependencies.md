@@ -23,17 +23,19 @@ bundle.
 |---|---|---|
 | `zbus` crate | 5.x | session-bus D-Bus client for `org.gnome.Mutter.ScreenCast` (feature `gnome`) |
 | `pollster` / `async-io` / `futures-lite` | — | block on zbus futures from the sync host |
-| `pipewire` crate (pipewire-rs) | 0.8.x | PipeWire stream consumer — **next** (needs headers) |
-| `libpipewire-0.3-dev` (apt) | 0.3.x ≥ 0.3.49 | system lib for the crate — **not yet installed on build host** |
-| GNOME | ≥ 40 (Ubuntu 21.04+; recommended 24.04+) | `RecordVirtual` API |
-| `python3-gi`, `gstreamer1.0-tools`, `gstreamer1.0-pipewire` | — | M6a Python probe + optional gst consumer for `--probe-gnome` |
+| `python3-gi`, `gstreamer1.0-tools`, `gstreamer1.0-pipewire` | — | M6a probe + `scripts/m6-pw-grab.py` frame consumer for `--source gnome` |
 | `zstd` crate | 0.13.x | M7 compression (binds libzstd or bundles) |
 
-Build the GNOME probe:
+Build / run the GNOME path:
 
 ```bash
-cargo run -p usbra-host --features gnome -- --probe-gnome --hold 30
+sudo apt install -y python3-gi gstreamer1.0-tools gstreamer1.0-pipewire
+cargo run -p usbra-host --features gnome -- --probe-gnome --hold 20
+scripts/run-gnome-demo.sh   # --source gnome + stats + frame-ack
 ```
+
+`pipewire` / `libpipewire-0.3-dev` remain optional until we replace the GStreamer
+grabber with a native damage-aware consumer.
 
 No display manager changes, no kernel modules, no root for the M6 path.
 

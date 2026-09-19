@@ -18,6 +18,7 @@ fn test_config() -> ServeConfig {
         full_every_secs: 0, // damage-only after the first full frame
         stats_path: None,
         frame_ack: true,
+        source: "test".into(),
     }
 }
 

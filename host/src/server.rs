@@ -32,13 +32,16 @@ pub struct ServeConfig {
     pub full_every_secs: u64,
     pub stats_path: Option<String>,
     pub frame_ack: bool,
+    /// `test` or `gnome` (gnome requires `--features gnome`).
+    pub source: String,
 }
 
 impl ServeConfig {
     fn print(&self, addr: &SocketAddr) {
         eprintln!(
-            "usbra-host: listening on {addr} (source=test {}x{}@{}fps, \
+            "usbra-host: listening on {addr} (source={} {}x{}@{}fps, \
              full-frame every {}s{})",
+            self.source,
             self.width,
             self.height,
             self.fps,
@@ -233,7 +236,11 @@ fn handle_conn(
             refresh: cfg.fps as u16,
             pixel_format: proto::pixel_format::BGRX,
             flags: proto::DisplayInfo::FLAG_CURSOR_EMBEDDED, // pattern contains everything
-            name: "USBra Test Pattern".into(),
+            name: if cfg.source == "gnome" {
+                "USBra Display".into()
+            } else {
+                "USBra Test Pattern".into()
+            },
         }),
     )?;
     proto::write_message(
@@ -334,20 +341,28 @@ fn handle_conn(
 }
 
 fn produce_frames(cfg: ServeConfig, tx: mpsc::Sender<OutMsg>, stop: Arc<AtomicBool>) {
-    let mut src: Box<dyn FrameSource> =
-        Box::new(TestSource::new(cfg.width, cfg.height, cfg.fps, cfg.full_every_secs));
+    let mut src: Box<dyn FrameSource> = match open_source(&cfg) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("usbra-host: failed to open source '{}': {e}", cfg.source);
+            return;
+        }
+    };
+    eprintln!("usbra-host: producer using source={}", src.name());
     let period = Duration::from_nanos(1_000_000_000 / cfg.fps.clamp(1, 240) as u64);
     let mut next = Instant::now();
     loop {
         if stop.load(Ordering::Relaxed) {
             break;
         }
-        next += period;
-        let now = Instant::now();
-        if next > now {
-            thread::sleep(next - now);
-        } else {
-            next = now; // fell behind; reset cadence instead of bursting
+        if !src.paces_itself() {
+            next += period;
+            let now = Instant::now();
+            if next > now {
+                thread::sleep(next - now);
+            } else {
+                next = now; // fell behind; reset cadence instead of bursting
+            }
         }
         let t0 = Instant::now();
         let frame = src.next_frame(proto::now_ns());
@@ -357,6 +372,38 @@ fn produce_frames(cfg: ServeConfig, tx: mpsc::Sender<OutMsg>, stop: Arc<AtomicBo
         }
     }
     src.shutdown();
+}
+
+fn open_source(cfg: &ServeConfig) -> io::Result<Box<dyn FrameSource>> {
+    match cfg.source.as_str() {
+        "test" => Ok(Box::new(TestSource::new(
+            cfg.width,
+            cfg.height,
+            cfg.fps,
+            cfg.full_every_secs,
+        ))),
+        "gnome" => {
+            #[cfg(feature = "gnome")]
+            {
+                Ok(Box::new(crate::gnome::GnomeSource::open(
+                    cfg.width,
+                    cfg.height,
+                    cfg.fps,
+                )?))
+            }
+            #[cfg(not(feature = "gnome"))]
+            {
+                Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    "source 'gnome' requires: cargo run --features gnome -- --source gnome",
+                ))
+            }
+        }
+        other => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("unknown source '{other}'"),
+        )),
+    }
 }
 
 fn writer_loop(

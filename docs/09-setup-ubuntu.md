@@ -47,7 +47,26 @@ Then launch **USBra** on the phone (see `docs/10-setup-android.md`). You
 should see the animated test pattern within a second, with the stats overlay
 counting fps/RTT.
 
-Other useful flags: `--full-frame-every 0` (damage-only), `--fps 30`,
+### Real Display 2 (M6, GNOME Wayland)
+
+```bash
+sudo apt install -y python3-gi gstreamer1.0-tools gstreamer1.0-pipewire
+
+# Prove mutter can create Display 2 (no phone):
+cargo run --features gnome -- --probe-gnome --hold 20
+# or: scripts/m6-probe-virtual-monitor.py --hold 20
+
+# Full path — phone renders the virtual monitor:
+cargo run --release --features gnome -- \
+  --source gnome --port 8899 --width 1600 --height 900 \
+  --fps 60 --stats /tmp/usbra.jsonl --frame-ack
+```
+
+On connect, GNOME Settings → Displays should show a second monitor. Drag a
+window onto it; the phone should show that desktop region. Unplug USB (or
+quit the host) and Display 2 disappears.
+
+Other useful flags: `--full-frame-every 0` (damage-only on test source), `--fps 30`,
 `--bind 127.0.0.1` (default; never expose this to the network).
 
 ## 4. Benchmarking
