@@ -1,6 +1,7 @@
 //! usbra-host library surface — used by the binary and by integration tests.
 
 pub mod args;
+pub mod damage;
 pub mod selftest;
 pub mod server;
 pub mod source;

@@ -52,6 +52,8 @@ private class UsbraRenderer(private val view: GLSurfaceView) : GLSurfaceView.Ren
     private var surfaceW = 1
     private var surfaceH = 1
     private val mvp = FloatArray(16)
+    /** Reused across uploads so we don't allocate a DirectByteBuffer per rect. */
+    private var uploadBuf: ByteBuffer? = null
 
     /** Clips: two triangles forming a full clip (x, y) quad. */
     private val quad = floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)
@@ -74,8 +76,17 @@ private class UsbraRenderer(private val view: GLSurfaceView) : GLSurfaceView.Ren
 
     fun submit(frame: Protocol.FrameMsg) {
         synchronized(lock) {
+            val isFull = displayW > 0 &&
+                frame.rects.size == 1 &&
+                frame.rects[0].x == 0 &&
+                frame.rects[0].y == 0 &&
+                frame.rects[0].w == displayW &&
+                frame.rects[0].h == displayH
+            // A full frame resyncs the texture — drop stale damage ahead of it.
+            if (isFull) pending.clear()
             pending.addLast(frame)
-            while (pending.size > 4) pending.removeFirst() // never lag: periodic full frames resync
+            // Soft cap: with tile-damage payloads this stays small; avoid multi-second lag.
+            while (pending.size > 8) pending.removeFirst()
         }
         view.requestRender()
     }
@@ -150,9 +161,12 @@ private class UsbraRenderer(private val view: GLSurfaceView) : GLSurfaceView.Ren
                 if (r.w == 0 || r.h == 0) continue
                 if (r.x + r.w > w || r.y + r.h > h) continue // defensive; host is trusted but cheap to check
                 val range = f.rectRange(i)
-                val buf = ByteBuffer.allocateDirect(r.byteLen).order(ByteOrder.nativeOrder())
-                buf.put(f.payload, range.first, range.count)
+                val len = range.last - range.first + 1
+                val buf = ensureUploadBuf(len)
+                buf.clear()
+                buf.put(f.payload, range.first, len)
                 buf.position(0)
+                buf.limit(len)
                 GLES20.glTexSubImage2D(
                     GLES20.GL_TEXTURE_2D, 0, r.x, r.y, r.w, r.h,
                     GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buf,
@@ -161,8 +175,8 @@ private class UsbraRenderer(private val view: GLSurfaceView) : GLSurfaceView.Ren
         }
         if (texAllocW == 0) return // texture just allocated, nothing uploaded yet
 
-        // Letterboxed full-clip blit.
-        val scale = minOf(surfaceW.toFloat() / w, surfaceH.toFloat() / h)
+        // Fill the landscape phone screen (cover); slight crop beats tiny letterbox.
+        val scale = maxOf(surfaceW.toFloat() / w, surfaceH.toFloat() / h)
         val halfW = w * scale / surfaceW
         val halfH = h * scale / surfaceH
         Matrix.orthoM(mvp, 0, -halfW, halfW, -halfH, halfH, -1f, 1f)
@@ -185,6 +199,16 @@ private class UsbraRenderer(private val view: GLSurfaceView) : GLSurfaceView.Ren
     }
 
     // ---- helpers ----
+
+    private fun ensureUploadBuf(minBytes: Int): ByteBuffer {
+        val cur = uploadBuf
+        if (cur != null && cur.capacity() >= minBytes) return cur
+        // Grow with headroom so full-frame 720p (≈3.6 MiB) doesn't churn.
+        val cap = maxOf(minBytes, 1280 * 720 * 4)
+        val buf = ByteBuffer.allocateDirect(cap).order(ByteOrder.nativeOrder())
+        uploadBuf = buf
+        return buf
+    }
 
     private fun direct(f: FloatArray): FloatBuffer =
         ByteBuffer.allocateDirect(f.size * 4)

@@ -255,7 +255,9 @@ fn handle_conn(
     reader.set_read_timeout(None)?;
 
     // ---- pipeline ----
-    let (tx, rx) = mpsc::channel::<OutMsg>();
+    // Bounded queue: if USB/writer is busy, the producer drops frames instead of
+    // building multi-second latency. Capacity 2 ≈ one in-flight + one ready.
+    let (tx, rx) = mpsc::sync_channel::<OutMsg>(2);
     let stop = Arc::new(AtomicBool::new(false));
 
     let producer = {
@@ -279,7 +281,7 @@ fn handle_conn(
         match proto::read_message(&mut reader) {
             Ok(Some(proto::Message::Ping(p))) => {
                 stats.event("ping", &[("client_ts_ns", p.client_ts_ns.to_string())]);
-                let _ = tx.send(OutMsg::Pong(proto::Pong {
+                let _ = tx.try_send(OutMsg::Pong(proto::Pong {
                     echoed_client_ts_ns: p.client_ts_ns,
                     host_ts_ns: proto::now_ns(),
                 }));
@@ -304,7 +306,7 @@ fn handle_conn(
                     "client_disconnect",
                     &[("reason", d.reason.to_string()), ("msg", d.message)],
                 );
-                let _ = tx.send(OutMsg::Bye(proto::Disconnect {
+                let _ = tx.try_send(OutMsg::Bye(proto::Disconnect {
                     reason: proto::reason::SHUTDOWN,
                     message: "bye".into(),
                 }));
@@ -312,7 +314,7 @@ fn handle_conn(
             }
             Ok(Some(other)) => {
                 stats.event("protocol_violation", &[("got", other.type_name().into())]);
-                let _ = tx.send(OutMsg::Bye(proto::Disconnect {
+                let _ = tx.try_send(OutMsg::Bye(proto::Disconnect {
                     reason: proto::reason::PROTOCOL,
                     message: format!("unexpected {}", other.type_name()),
                 }));
@@ -340,7 +342,7 @@ fn handle_conn(
     Ok(())
 }
 
-fn produce_frames(cfg: ServeConfig, tx: mpsc::Sender<OutMsg>, stop: Arc<AtomicBool>) {
+fn produce_frames(cfg: ServeConfig, tx: mpsc::SyncSender<OutMsg>, stop: Arc<AtomicBool>) {
     let mut src: Box<dyn FrameSource> = match open_source(&cfg) {
         Ok(s) => s,
         Err(e) => {
@@ -367,8 +369,12 @@ fn produce_frames(cfg: ServeConfig, tx: mpsc::Sender<OutMsg>, stop: Arc<AtomicBo
         let t0 = Instant::now();
         let frame = src.next_frame(proto::now_ns());
         let gen_us = t0.elapsed().as_micros() as u64;
-        if tx.send(OutMsg::Frame { frame, gen_us }).is_err() {
-            break;
+        match tx.try_send(OutMsg::Frame { frame, gen_us }) {
+            Ok(()) => {}
+            Err(mpsc::TrySendError::Full(_)) => {
+                // Writer still flushing prior frame(s) — stay realtime, skip.
+            }
+            Err(mpsc::TrySendError::Disconnected(_)) => break,
         }
     }
     src.shutdown();
@@ -389,6 +395,7 @@ fn open_source(cfg: &ServeConfig) -> io::Result<Box<dyn FrameSource>> {
                     cfg.width,
                     cfg.height,
                     cfg.fps,
+                    cfg.full_every_secs,
                 )?))
             }
             #[cfg(not(feature = "gnome"))]

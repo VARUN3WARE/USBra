@@ -2,8 +2,8 @@
 //!
 //! Creates a real Display 2 via [`super::ScreenCastSession`], then spawns
 //! `scripts/m6-pw-grab.py` to consume the PipeWire node (BGRx full frames).
-//! Damage-region extraction lands when we switch to a native pipewire-rs
-//! consumer (`libpipewire-0.3-dev`).
+//! Tile-diff damage packing keeps USB bandwidth proportional to change until
+//! a native pipewire-rs consumer with `SPA_META_VideoDamage` lands.
 
 use std::io::{self, Read};
 use std::path::PathBuf;
@@ -13,8 +13,9 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use usbra_protocol::{codec, pixel_format, Frame, Rect};
+use usbra_protocol::{codec, pixel_format, Frame, Rect, MAX_RECTS};
 
+use crate::damage::{dirty_rects, pack_rects};
 use crate::source::FrameSource;
 
 use super::{cursor, ScreenCastSession, SessionConfig};
@@ -29,6 +30,11 @@ pub struct GnomeSource {
     stdout: Option<ChildStdout>,
     width: u16,
     height: u16,
+    fps: u32,
+    full_every_secs: u64,
+    frames_since_full: u64,
+    /// Last canvas sent to the client (for tile-diff damage).
+    prev: Vec<u8>,
     stop: Arc<AtomicBool>,
     frame_id: u64,
     /// First frame consumed during `open` (proves the pipeline works).
@@ -38,7 +44,7 @@ pub struct GnomeSource {
 impl GnomeSource {
     /// Create the virtual monitor and start the grabber. Blocks until the
     /// ScreenCast session is up **and** the first frame has been captured.
-    pub fn open(width: u16, height: u16, fps: u32) -> io::Result<GnomeSource> {
+    pub fn open(width: u16, height: u16, fps: u32, full_every_secs: u64) -> io::Result<GnomeSource> {
         let cfg = SessionConfig {
             width,
             height,
@@ -103,8 +109,9 @@ impl GnomeSource {
         };
         let (w, h) = (first.rects[0].w, first.rects[0].h);
         let frame_id = first.frame_id;
+        let prev = first.payload.clone();
         eprintln!(
-            "usbra-host: gnome source — first frame {w}x{h} id={frame_id} ({} KiB)",
+            "usbra-host: gnome source — first frame {w}x{h} id={frame_id} ({} KiB, tile-damage on)",
             first.payload.len() / 1024
         );
 
@@ -114,9 +121,101 @@ impl GnomeSource {
             stdout: Some(stdout),
             width: w,
             height: h,
+            fps: fps.max(1),
+            full_every_secs: full_every_secs.max(1),
+            frames_since_full: 0,
+            prev,
             stop: Arc::new(AtomicBool::new(false)),
             frame_id,
             pending: Some(first),
+        })
+    }
+
+    fn force_full_interval(&self) -> u64 {
+        (self.full_every_secs as u64).saturating_mul(self.fps as u64).max(1)
+    }
+
+    /// Convert a full-canvas grab into a damage (or periodic full) frame.
+    /// Returns `None` when the canvas is unchanged (caller should keep reading).
+    fn to_client_frame(&mut self, full: Frame) -> Option<Frame> {
+        let w = full.rects[0].w;
+        let h = full.rects[0].h;
+        let canvas = full.payload;
+        self.frame_id = full.frame_id;
+
+        if w != self.width || h != self.height {
+            eprintln!(
+                "usbra-host: gnome size change {w}x{h} (was {}x{})",
+                self.width, self.height
+            );
+            self.width = w;
+            self.height = h;
+            self.prev = canvas.clone();
+            self.frames_since_full = 0;
+            return Some(Frame {
+                frame_id: full.frame_id,
+                timestamp_ns: full.timestamp_ns,
+                codec: codec::RAW,
+                pixel_format: pixel_format::BGRX,
+                rects: vec![Rect::new(0, 0, w, h)],
+                payload: canvas,
+            });
+        }
+
+        self.frames_since_full = self.frames_since_full.saturating_add(1);
+        let force_full = self.frames_since_full >= self.force_full_interval();
+
+        if force_full || self.prev.is_empty() {
+            self.prev = canvas.clone();
+            self.frames_since_full = 0;
+            return Some(Frame {
+                frame_id: full.frame_id,
+                timestamp_ns: full.timestamp_ns,
+                codec: codec::RAW,
+                pixel_format: pixel_format::BGRX,
+                rects: vec![Rect::new(0, 0, w, h)],
+                payload: canvas,
+            });
+        }
+
+        let max_rects = MAX_RECTS as usize;
+        let rects = dirty_rects(&self.prev, &canvas, w, h, max_rects);
+        if rects.is_empty() {
+            return None; // unchanged — don't burn USB bandwidth
+        }
+
+        let full_len = canvas.len();
+        let packed = if rects.len() == 1 && rects[0].w == w && rects[0].h == h {
+            canvas.clone()
+        } else {
+            pack_rects(&canvas, w as usize, &rects)
+        };
+
+        // Prefer one full frame over a near-full damage pack (USB + GL cheaper).
+        let (rects, payload) = if packed.len() * 4 > full_len * 3 {
+            self.frames_since_full = 0;
+            (
+                vec![Rect::new(0, 0, w, h)],
+                if packed.len() == full_len {
+                    packed
+                } else {
+                    canvas.clone()
+                },
+            )
+        } else {
+            if rects.len() == 1 && rects[0].w == w && rects[0].h == h {
+                self.frames_since_full = 0;
+            }
+            (rects, packed)
+        };
+        self.prev = canvas;
+        Some(Frame {
+            frame_id: full.frame_id,
+            timestamp_ns: full.timestamp_ns,
+            codec: codec::RAW,
+            pixel_format: pixel_format::BGRX,
+            rects,
+            payload,
         })
     }
 }
@@ -138,45 +237,38 @@ impl FrameSource for GnomeSource {
         if let Some(f) = self.pending.take() {
             return f;
         }
-        let stdout = self
-            .stdout
-            .as_mut()
-            .expect("gnome source stdout after open");
         loop {
             if self.stop.load(Ordering::Relaxed) {
                 return blank_frame(self.frame_id.saturating_add(1), self.width, self.height);
             }
-            match read_ubf1_frame_once(stdout) {
-                Ok(f) => {
-                    if f.rects[0].w != self.width || f.rects[0].h != self.height {
-                        eprintln!(
-                            "usbra-host: gnome size change {}x{} (was {}x{})",
-                            f.rects[0].w,
-                            f.rects[0].h,
-                            self.width,
-                            self.height
-                        );
-                        self.width = f.rects[0].w;
-                        self.height = f.rects[0].h;
-                    }
-                    self.frame_id = f.frame_id;
-                    return f;
-                }
-                Err(e) => {
-                    if let Some(child) = self.grabber.as_mut() {
-                        if let Ok(Some(status)) = child.try_wait() {
-                            eprintln!("usbra-host: gnome grabber exited: {status}");
-                            return blank_frame(
-                                self.frame_id.saturating_add(1),
-                                self.width,
-                                self.height,
-                            );
+            let full = {
+                let stdout = self
+                    .stdout
+                    .as_mut()
+                    .expect("gnome source stdout after open");
+                match read_ubf1_frame_once(stdout) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        if let Some(child) = self.grabber.as_mut() {
+                            if let Ok(Some(status)) = child.try_wait() {
+                                eprintln!("usbra-host: gnome grabber exited: {status}");
+                                return blank_frame(
+                                    self.frame_id.saturating_add(1),
+                                    self.width,
+                                    self.height,
+                                );
+                            }
                         }
+                        eprintln!("usbra-host: gnome grabber read failed: {e}");
+                        thread::sleep(Duration::from_millis(50));
+                        continue;
                     }
-                    eprintln!("usbra-host: gnome grabber read failed: {e}");
-                    thread::sleep(Duration::from_millis(50));
                 }
+            };
+            if let Some(f) = self.to_client_frame(full) {
+                return f;
             }
+            // Identical to prev — grab next PipeWire buffer (saves USB).
         }
     }
 
